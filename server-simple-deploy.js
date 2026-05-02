@@ -48,111 +48,114 @@ const pool = new Pool({
 async function initDb() {
   const client = await pool.connect();
   try {
+    // 1. Gauge Profiles (Master Table)
     await client.query(`CREATE TABLE IF NOT EXISTS gauge_profiles (
       gauge_id TEXT PRIMARY KEY,
       gauge_type TEXT,
       calibration_frequency INTEGER,
-      last_calibration_date TEXT,
+      last_calibration_date DATE,
       monthly_usage REAL,
       produced_quantity REAL,
       max_capacity REAL,
       remaining_capacity REAL,
       capacity_percentage REAL,
       status TEXT,
-      next_calibration_date TEXT,
+      next_calibration_date DATE,
       location TEXT,
       notes TEXT,
       last_modified_by TEXT,
-      created_at TEXT,
-      updated_at TEXT
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )`);
 
+    // 2. Alerts
     await client.query(`CREATE TABLE IF NOT EXISTS alerts (
-      id TEXT PRIMARY KEY,
-      gauge_id TEXT,
+      id SERIAL PRIMARY KEY, -- Changed to SERIAL for auto-increment
+      gauge_id TEXT REFERENCES gauge_profiles(gauge_id) ON DELETE CASCADE,
       type TEXT,
       severity TEXT,
       message TEXT,
-      acknowledged INTEGER DEFAULT 0,
-      created_at TEXT,
-      FOREIGN KEY (gauge_id) REFERENCES gauge_profiles (gauge_id) ON DELETE CASCADE
+      acknowledged BOOLEAN DEFAULT FALSE, -- Use BOOLEAN for Postgres
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )`);
 
+    // 3. Email Settings
     await client.query(`CREATE TABLE IF NOT EXISTS email_settings (
       id SERIAL PRIMARY KEY,
-      enabled INTEGER DEFAULT 1,
+      enabled BOOLEAN DEFAULT TRUE,
       smtp_host TEXT DEFAULT 'smtp.gmail.com',
       smtp_port INTEGER DEFAULT 587,
-      smtp_secure INTEGER DEFAULT 0,
+      smtp_secure BOOLEAN DEFAULT FALSE,
       smtp_user TEXT,
       smtp_password TEXT,
       from_email TEXT,
       recipients TEXT,
-      created_at TEXT,
-      updated_at TEXT
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )`);
 
     await client.query(`CREATE TABLE IF NOT EXISTS email_recipients (
       email TEXT PRIMARY KEY
     )`);
 
+    // 4. Pipelines
     await client.query(`CREATE TABLE IF NOT EXISTS pipelines (
       pipeline_id SERIAL PRIMARY KEY,
-      pipeline_name TEXT,
+      pipeline_name TEXT NOT NULL,
       cell_name TEXT,
       description TEXT,
-      created_at TEXT
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )`);
 
+    // 5. Allocation (Join Table)
     await client.query(`CREATE TABLE IF NOT EXISTS gauge_pipeline_allocation (
       allocation_id SERIAL PRIMARY KEY,
       gauge_id TEXT REFERENCES gauge_profiles(gauge_id) ON DELETE CASCADE,
       pipeline_id INTEGER REFERENCES pipelines(pipeline_id) ON DELETE CASCADE,
-      allocation_pct REAL,
-      effective_from TEXT,
-      effective_to TEXT,
-      is_active BOOLEAN DEFAULT true
+      allocation_pct REAL DEFAULT 100,
+      effective_from DATE DEFAULT CURRENT_DATE,
+      effective_to DATE,
+      is_active BOOLEAN DEFAULT TRUE
     )`);
 
+    // 6. Monthly Usage Logs
     await client.query(`CREATE TABLE IF NOT EXISTS gauge_monthly_log (
       log_id SERIAL PRIMARY KEY,
       gauge_id TEXT REFERENCES gauge_profiles(gauge_id) ON DELETE CASCADE,
       pipeline_id INTEGER REFERENCES pipelines(pipeline_id) ON DELETE CASCADE,
-      year_month TEXT,
+      year_month TEXT NOT NULL, -- e.g., '2026-05'
       production_plan REAL,
       actual_production REAL,
       variance_reason TEXT,
       resolution_status TEXT,
       utilisation_pct REAL,
       life_consumed_pct REAL,
-      logged_at TEXT
+      logged_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )`);
 
+    // 7. ML Forecasts
     await client.query(`CREATE TABLE IF NOT EXISTS ml_forecasts (
       forecast_id SERIAL PRIMARY KEY,
       gauge_id TEXT REFERENCES gauge_profiles(gauge_id) ON DELETE CASCADE,
       forecast_month TEXT,
       predicted_utilisation_pct REAL,
       predicted_life_consumed_pct REAL,
-      predicted_expiry_date TEXT,
+      predicted_expiry_date DATE,
       confidence_score REAL,
       model_version TEXT,
-      generated_at TEXT
+      generated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )`);
 
-    // Seed default recipient if table is empty
+    // Seeding logic (Remains the same, just cleaner)
     const res = await client.query('SELECT COUNT(*) as cnt FROM email_recipients');
     if (parseInt(res.rows[0].cnt) === 0) {
       await client.query('INSERT INTO email_recipients (email) VALUES ($1) ON CONFLICT DO NOTHING', [EMAIL_CONFIG.to]);
     }
-    
-    // Seed some default pipelines
+
     const p_res = await client.query('SELECT COUNT(*) as cnt FROM pipelines');
     if (parseInt(p_res.rows[0].cnt) === 0) {
-      const now = new Date().toISOString();
-      await client.query('INSERT INTO pipelines (pipeline_name, cell_name, created_at) VALUES ($1, $2, $3)', ['Alpha Line', 'Cell A', now]);
-      await client.query('INSERT INTO pipelines (pipeline_name, cell_name, created_at) VALUES ($1, $2, $3)', ['Beta Line', 'Cell A', now]);
-      await client.query('INSERT INTO pipelines (pipeline_name, cell_name, created_at) VALUES ($1, $2, $3)', ['Gamma Line', 'Cell B', now]);
+      await client.query('INSERT INTO pipelines (pipeline_name, cell_name) VALUES ($1, $2), ($3, $4), ($5, $6)',
+        ['Alpha Line', 'Cell A', 'Beta Line', 'Cell A', 'Gamma Line', 'Cell B']);
     }
 
     console.log('📦 Database initialized successfully.');
@@ -230,7 +233,7 @@ function calcGaugeFields(row) {
 
   const remaining = Math.max(0, maxCapacity - producedQty);
   const capacityPct = maxCapacity > 0 ? (producedQty / maxCapacity) * 100 : 0;
-  
+
   const today = new Date();
   const daysUntilCal = nextCalDate ? Math.ceil((new Date(nextCalDate) - today) / 86400000) : 999;
   let status = 'safe';
@@ -324,9 +327,9 @@ app.post('/api/gauges', async (req, res) => {
         last_modified_by = EXCLUDED.last_modified_by,
         updated_at = EXCLUDED.updated_at
     `, [profile.gauge_id, profile.gauge_type, profile.location, profile.last_calibration_date,
-       profile.calibration_frequency, profile.next_calibration_date, profile.produced_quantity,
-       profile.max_capacity, profile.remaining_capacity, profile.capacity_percentage,
-       profile.status, profile.notes, profile.last_modified_by, profile.created_at, profile.updated_at]);
+    profile.calibration_frequency, profile.next_calibration_date, profile.produced_quantity,
+    profile.max_capacity, profile.remaining_capacity, profile.capacity_percentage,
+    profile.status, profile.notes, profile.last_modified_by, profile.created_at, profile.updated_at]);
 
     if (f.daysUntilCal < 0) {
       const alert = {
@@ -433,21 +436,21 @@ app.get('/api/gauges/:id/monthly-log', async (req, res) => {
 app.post('/api/gauges/:id/monthly-log', async (req, res) => {
   const { pipeline_id, year_month, production_plan, actual_production } = req.body;
   const utilisation_pct = production_plan > 0 ? (actual_production / production_plan) * 100 : 0;
-  
+
   try {
     const { rows } = await pool.query(`
       INSERT INTO gauge_monthly_log 
       (gauge_id, pipeline_id, year_month, production_plan, actual_production, utilisation_pct, logged_at)
       VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING log_id
     `, [req.params.id, pipeline_id, year_month, production_plan, actual_production, utilisation_pct, new Date().toISOString()]);
-    
+
     // Trigger ML Inference asynchronously
     const pythonScript = path.join(__dirname, 'ml_pipeline', 'forecast.py');
     execFile('python3', [pythonScript, req.params.id], (error, stdout, stderr) => {
       if (error) {
         console.error('ML Script Error:', error.message);
         execFile('python', [pythonScript, req.params.id], (err2) => {
-           if(err2) console.error('Fallback ML Script Error:', err2.message);
+          if (err2) console.error('Fallback ML Script Error:', err2.message);
         });
       }
       if (stdout) console.log('ML Output:', stdout);
