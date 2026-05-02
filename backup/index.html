@@ -1,0 +1,762 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Calibration & Production Capacity Management System</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background-color: #f5f5f5;
+            color: #333;
+            line-height: 1.6;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #00AEEF 0%, #0077b6 100%);
+            color: white;
+            padding: 2rem;
+            border-radius: 10px;
+            margin-bottom: 2rem;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.15);
+            display: flex;
+            align-items: center;
+            gap: 2rem;
+        }
+
+        .header-logo {
+            background: white;
+            border-radius: 8px;
+            padding: 0.5rem 1rem;
+            display: flex;
+            align-items: center;
+            flex-shrink: 0;
+        }
+
+        .header-logo svg {
+            height: 52px;
+            width: auto;
+        }
+
+        .header-text h1 {
+            font-size: 2rem;
+            margin-bottom: 0.25rem;
+            font-weight: 700;
+            letter-spacing: -0.5px;
+        }
+
+        .header-text p {
+            font-size: 1rem;
+            opacity: 0.9;
+        }
+
+        .status-bar {
+            background: white;
+            padding: 1rem;
+            border-radius: 8px;
+            margin-bottom: 2rem;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 1rem;
+        }
+
+        .status-item {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .status-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background-color: #4CAF50;
+        }
+
+        .status-dot.disconnected {
+            background-color: #f44336;
+        }
+
+        .dashboard {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 2rem;
+            margin-bottom: 2rem;
+        }
+
+        .card {
+            background: white;
+            border-radius: 10px;
+            padding: 1.5rem;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            transition: transform 0.2s ease;
+        }
+
+        .card:hover {
+            transform: translateY(-2px);
+        }
+
+        .card h3 {
+            color: #333;
+            margin-bottom: 1rem;
+            font-size: 1.3rem;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 1rem;
+        }
+
+        .stat-item {
+            text-align: center;
+            padding: 1rem;
+            border-radius: 8px;
+            background: #f8f9fa;
+        }
+
+        .stat-number {
+            font-size: 2rem;
+            font-weight: bold;
+            margin-bottom: 0.5rem;
+        }
+
+        .stat-label {
+            font-size: 0.9rem;
+            color: #666;
+        }
+
+        .safe { color: #4CAF50; }
+        .near-limit { color: #FF9800; }
+        .calibration-required { color: #FF5722; }
+        .overdue { color: #f44336; }
+
+        .controls {
+            background: white;
+            padding: 1.5rem;
+            border-radius: 10px;
+            margin-bottom: 2rem;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+
+        .controls h3 {
+            margin-bottom: 1rem;
+        }
+
+        .button-group {
+            display: flex;
+            gap: 1rem;
+            flex-wrap: wrap;
+        }
+
+        .btn {
+            padding: 0.75rem 1.5rem;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 1rem;
+            transition: all 0.2s ease;
+            text-decoration: none;
+            display: inline-block;
+            text-align: center;
+        }
+
+        .btn-primary {
+            background: #00AEEF;
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: #0099d4;
+        }
+
+        .btn-success {
+            background: #4CAF50;
+            color: white;
+        }
+
+        .btn-success:hover {
+            background: #45a049;
+        }
+
+        .btn-warning {
+            background: #FF9800;
+            color: white;
+        }
+
+        .btn-warning:hover {
+            background: #e68900;
+        }
+
+        .btn-danger {
+            background: #f44336;
+            color: white;
+        }
+
+        .btn-danger:hover {
+            background: #da190b;
+        }
+
+        .file-upload {
+            border: 2px dashed #ddd;
+            border-radius: 8px;
+            padding: 2rem;
+            text-align: center;
+            margin: 1rem 0;
+            transition: border-color 0.2s ease;
+        }
+
+        .file-upload:hover {
+            border-color: #00AEEF;
+        }
+
+        .file-upload.dragover {
+            border-color: #00AEEF;
+            background-color: #e8f7fd;
+        }
+
+        .gauges-table {
+            background: white;
+            border-radius: 10px;
+            padding: 1.5rem;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            overflow-x: auto;
+        }
+
+        .table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 1rem;
+        }
+
+        .table th,
+        .table td {
+            padding: 0.75rem;
+            text-align: left;
+            border-bottom: 1px solid #eee;
+        }
+
+        .table th {
+            background-color: #f8f9fa;
+            font-weight: 600;
+            color: #333;
+        }
+
+        .table tr:hover {
+            background-color: #f8f9fa;
+        }
+
+        .status-badge {
+            padding: 0.25rem 0.75rem;
+            border-radius: 20px;
+            font-size: 0.8rem;
+            font-weight: 500;
+            text-transform: uppercase;
+        }
+
+        .status-safe {
+            background-color: #d4edda;
+            color: #155724;
+        }
+
+        .status-near-limit {
+            background-color: #fff3cd;
+            color: #856404;
+        }
+
+        .status-calibration-required {
+            background-color: #f8d7da;
+            color: #721c24;
+        }
+
+        .status-overdue {
+            background-color: #f5c6cb;
+            color: #721c24;
+        }
+
+        .alerts {
+            background: white;
+            border-radius: 10px;
+            padding: 1.5rem;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            margin-bottom: 2rem;
+        }
+
+        .alert-item {
+            padding: 1rem;
+            border-left: 4px solid #ddd;
+            margin-bottom: 1rem;
+            background: #f8f9fa;
+            border-radius: 0 6px 6px 0;
+        }
+
+        .alert-high {
+            border-left-color: #f44336;
+        }
+
+        .alert-medium {
+            border-left-color: #FF9800;
+        }
+
+        .alert-low {
+            border-left-color: #4CAF50;
+        }
+
+        .search-filters {
+            display: flex;
+            gap: 1rem;
+            margin-bottom: 1rem;
+            flex-wrap: wrap;
+        }
+
+        .search-input {
+            flex: 1;
+            min-width: 200px;
+            padding: 0.75rem;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            font-size: 1rem;
+        }
+
+        .select {
+            padding: 0.75rem;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            font-size: 1rem;
+            background: white;
+        }
+
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.5);
+        }
+
+        .modal-content {
+            background-color: white;
+            margin: 5% auto;
+            padding: 2rem;
+            border-radius: 10px;
+            width: 90%;
+            max-width: 600px;
+            max-height: 80vh;
+            overflow-y: auto;
+        }
+
+        .close {
+            color: #aaa;
+            float: right;
+            font-size: 28px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+
+        .close:hover {
+            color: #000;
+        }
+
+        .form-group {
+            margin-bottom: 1rem;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 0.5rem;
+            font-weight: 500;
+        }
+
+        .form-group input,
+        .form-group select {
+            width: 100%;
+            padding: 0.75rem;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            font-size: 1rem;
+        }
+
+        .loading {
+            display: none;
+            text-align: center;
+            padding: 2rem;
+        }
+
+        .spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #00AEEF;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 1rem;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .notification {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            padding: 1rem 1.5rem;
+            border-radius: 6px;
+            color: white;
+            font-weight: 500;
+            z-index: 1001;
+            transform: translateX(400px);
+            transition: transform 0.3s ease;
+        }
+
+        .notification.show {
+            transform: translateX(0);
+        }
+
+        .notification.success {
+            background-color: #4CAF50;
+        }
+
+        .notification.error {
+            background-color: #f44336;
+        }
+
+        .notification.warning {
+            background-color: #FF9800;
+        }
+
+        .notification.info {
+            background-color: #2196F3;
+        }
+
+        @media (max-width: 768px) {
+            .container {
+                padding: 10px;
+            }
+
+            .header h1 {
+                font-size: 2rem;
+            }
+
+            .dashboard {
+                grid-template-columns: 1fr;
+            }
+
+            .button-group {
+                flex-direction: column;
+            }
+
+            .search-filters {
+                flex-direction: column;
+            }
+
+            .stats-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div class="header-logo">
+                <!-- DANA Anand logo recreation in SVG -->
+                <svg viewBox="0 0 220 60" xmlns="http://www.w3.org/2000/svg">
+                    <!-- DANA diamond shape -->
+                    <polygon points="30,5 55,30 30,55 5,30" fill="#00AEEF"/>
+                    <polygon points="30,18 50,30 30,42 10,30" fill="white"/>
+                    <polygon points="30,30 50,30 30,55 10,30" fill="#1a1a1a"/>
+                    <text x="30" y="34" text-anchor="middle" font-family="Arial Black, sans-serif" font-size="10" font-weight="900" fill="#1a1a1a">DANA</text>
+                    <!-- divider -->
+                    <line x1="70" y1="10" x2="70" y2="50" stroke="#cccccc" stroke-width="1.5"/>
+                    <!-- ANAND text -->
+                    <text x="85" y="37" font-family="Arial Black, sans-serif" font-size="18" font-weight="900" fill="#00AEEF" letter-spacing="2">ANAND</text>
+                    <!-- chevrons -->
+                    <polygon points="195,22 205,30 195,38 200,38 210,30 200,22" fill="#00AEEF"/>
+                    <polygon points="205,22 215,30 205,38 210,38 220,30 210,22" fill="#00AEEF"/>
+                </svg>
+            </div>
+            <div class="header-text">
+                <h1>Calibration & Production Capacity Management</h1>
+                <p>Real-time monitoring and management of gauge calibration schedules based on production capacity</p>
+            </div>
+        </div>
+
+        <div class="status-bar">
+            <div class="status-item">
+                <div class="status-dot" id="connectionStatus"></div>
+                <span id="connectionText">Connecting...</span>
+            </div>
+            <div class="status-item">
+                <span>Last Updated: <span id="lastUpdated">Never</span></span>
+            </div>
+            <div class="status-item">
+                <span>Total Gauges: <span id="totalGauges">0</span></span>
+            </div>
+        </div>
+
+        <div class="dashboard">
+            <div class="card">
+                <h3>System Overview</h3>
+                <div class="stats-grid">
+                    <div class="stat-item">
+                        <div class="stat-number safe" id="safeCount">0</div>
+                        <div class="stat-label">Safe</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-number near-limit" id="nearLimitCount">0</div>
+                        <div class="stat-label">Near Limit</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-number calibration-required" id="calibrationRequiredCount">0</div>
+                        <div class="stat-label">Calibration Required</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-number overdue" id="overdueCount">0</div>
+                        <div class="stat-label">Overdue</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card">
+                <h3>Recent Alerts</h3>
+                <div id="recentAlerts">
+                    <p>No recent alerts</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="controls">
+            <h3>System Controls</h3>
+            <div class="button-group">
+                <button class="btn btn-primary" onclick="openUploadModal()">Upload Excel File</button>
+                <button class="btn btn-success" onclick="downloadExcel()">Export to Excel</button>
+                <button class="btn btn-primary" onclick="openGaugeModal()">Add New Gauge</button>
+                <button class="btn btn-warning" onclick="openThresholdsModal()">Configure Thresholds</button>
+                <button class="btn btn-info" onclick="testEmailNotification()">Test Email</button>
+                <button class="btn btn-secondary" onclick="checkEmailStatus()">Email Status</button>
+                <button class="btn btn-primary" onclick="openEmailConfigModal()">Email Config</button>
+                <button class="btn btn-danger" onclick="resetSystem()">Reset System</button>
+            </div>
+        </div>
+
+        <div class="gauges-table">
+            <h3>Gauge Profiles</h3>
+            <div class="search-filters">
+                <input type="text" class="search-input" id="searchInput" placeholder="Search gauges..." onkeyup="filterGauges()">
+                <select class="select" id="statusFilter" onchange="filterGauges()">
+                    <option value="">All Statuses</option>
+                    <option value="safe">Safe</option>
+                    <option value="near_limit">Near Limit</option>
+                    <option value="calibration_required">Calibration Required</option>
+                    <option value="overdue">Overdue</option>
+                </select>
+                <button class="btn btn-primary" onclick="refreshGauges()">Refresh</button>
+            </div>
+            <div class="loading" id="gaugesLoading">
+                <div class="spinner"></div>
+                <p>Loading gauges...</p>
+            </div>
+            <table class="table" id="gaugesTable" style="display: none;">
+                <thead>
+                    <tr>
+                        <th>Gauge ID</th>
+                        <th>Type</th>
+                        <th>Status</th>
+                        <th>Remaining Capacity</th>
+                        <th>Usage %</th>
+                        <th>Last Calibration</th>
+                        <th>Next Calibration</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="gaugesTableBody">
+                </tbody>
+            </table>
+        </div>
+
+        <div class="alerts">
+            <h3>All Alerts</h3>
+            <div id="allAlerts">
+                <p>Loading alerts...</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Upload Modal -->
+    <div id="uploadModal" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="closeUploadModal()">&times;</span>
+            <h3>Upload Excel File</h3>
+            <div class="file-upload" id="fileUpload">
+                <p>Drag and drop an Excel file here, or click to select</p>
+                <input type="file" id="fileInput" accept=".xlsx,.xls" style="display: none;">
+                <button class="btn btn-primary" onclick="document.getElementById('fileInput').click()">Select File</button>
+            </div>
+            <div id="uploadOptions" style="display: none;">
+                <h4>Import Options</h4>
+                <label>
+                    <input type="checkbox" id="replaceExisting"> Replace existing gauges
+                </label><br>
+                <label>
+                    <input type="checkbox" id="skipDuplicates" checked> Skip duplicates
+                </label><br>
+                <button class="btn btn-success" onclick="uploadFile()">Import Data</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Gauge Modal -->
+    <div id="gaugeModal" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="closeGaugeModal()">&times;</span>
+            <h3 id="gaugeModalTitle">Add New Gauge</h3>
+            <form id="gaugeForm">
+                <div class="form-group">
+                    <label for="gaugeId">Gauge ID</label>
+                    <input type="text" id="gaugeId" required>
+                </div>
+                <div class="form-group">
+                    <label for="gaugeType">Gauge Type</label>
+                    <input type="text" id="gaugeType" required>
+                </div>
+                <div class="form-group">
+                    <label for="calibrationFrequency">Calibration Frequency (months)</label>
+                    <input type="number" id="calibrationFrequency" min="1" required>
+                </div>
+                <div class="form-group">
+                    <label for="lastCalibrationDate">Last Calibration Date</label>
+                    <input type="date" id="lastCalibrationDate" required>
+                </div>
+                <div class="form-group">
+                    <label for="monthlyUsage">Monthly Usage</label>
+                    <input type="number" id="monthlyUsage" min="0" step="0.01" required>
+                </div>
+                <div class="form-group">
+                    <label for="producedQuantity">Produced Quantity</label>
+                    <input type="number" id="producedQuantity" min="0" step="0.01" required>
+                </div>
+                <div class="form-group">
+                    <label for="maxCapacity">Maximum Capacity</label>
+                    <input type="number" id="maxCapacity" min="1" step="0.01" required>
+                </div>
+                <div class="button-group">
+                    <button type="submit" class="btn btn-success">Save Gauge</button>
+                    <button type="button" class="btn btn-danger" onclick="closeGaugeModal()">Cancel</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Thresholds Modal -->
+    <div id="thresholdsModal" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="closeThresholdsModal()">&times;</span>
+            <h3>Configure Capacity Thresholds</h3>
+            <form id="thresholdsForm">
+                <div class="form-group">
+                    <label for="nearLimitPercentage">Near Limit Percentage (%)</label>
+                    <input type="number" id="nearLimitPercentage" min="1" max="100" step="1" required>
+                </div>
+                <div class="form-group">
+                    <label for="calibrationWarningMonths">Calibration Warning (months before due)</label>
+                    <input type="number" id="calibrationWarningMonths" min="1" max="12" step="1" required>
+                </div>
+                <div class="button-group">
+                    <button type="submit" class="btn btn-success">Update Thresholds</button>
+                    <button type="button" class="btn btn-danger" onclick="closeThresholdsModal()">Cancel</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Email Configuration Modal -->
+    <div id="emailConfigModal" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="closeEmailConfigModal()">&times;</span>
+            <h3>Email Configuration</h3>
+            
+            <!-- Email Settings Form -->
+            <form id="emailConfigForm">
+                <div class="form-group">
+                    <label>
+                        <input type="checkbox" id="emailEnabled"> Enable Email Notifications
+                    </label>
+                </div>
+                <div class="form-group">
+                    <label for="smtpHost">SMTP Host</label>
+                    <input type="text" id="smtpHost" placeholder="smtp.gmail.com">
+                </div>
+                <div class="form-group">
+                    <label for="smtpPort">SMTP Port</label>
+                    <input type="number" id="smtpPort" placeholder="587">
+                </div>
+                <div class="form-group">
+                    <label for="smtpUser">Email Address</label>
+                    <input type="email" id="smtpUser" placeholder="your-email@gmail.com">
+                </div>
+                <div class="form-group">
+                    <label for="smtpPassword">App Password</label>
+                    <input type="password" id="smtpPassword" placeholder="Your Gmail App Password">
+                    <small style="color: #666; font-size: 0.9rem;">
+                        For Gmail, use an App Password instead of your regular password.
+                        <a href="https://support.google.com/accounts/answer/185833" target="_blank">Learn how to create one</a>
+                    </small>
+                </div>
+                <div class="form-group">
+                    <label for="fromEmail">From Email</label>
+                    <input type="email" id="fromEmail" placeholder="alerts@yourcompany.com">
+                </div>
+                
+                <div class="button-group">
+                    <button type="submit" class="btn btn-success">Save Configuration</button>
+                    <button type="button" class="btn btn-warning" onclick="testEmailConfig()">Test Configuration</button>
+                </div>
+            </form>
+            
+            <hr style="margin: 2rem 0;">
+            
+            <!-- Recipients Management -->
+            <div>
+                <h4>Email Recipients</h4>
+                <div class="form-group">
+                    <label for="newRecipientEmail">Add New Recipient</label>
+                    <div style="display: flex; gap: 0.5rem;">
+                        <input type="email" id="newRecipientEmail" placeholder="recipient@company.com" style="flex: 1;">
+                        <button type="button" class="btn btn-primary" onclick="addEmailRecipient()">Add</button>
+                    </div>
+                </div>
+                
+                <div id="recipientsList" style="margin-top: 1rem;">
+                    <p>Loading recipients...</p>
+                </div>
+            </div>
+            
+            <div class="button-group" style="margin-top: 2rem;">
+                <button type="button" class="btn btn-danger" onclick="closeEmailConfigModal()">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="app.js?v=6"></script>
+</body>
+</html>

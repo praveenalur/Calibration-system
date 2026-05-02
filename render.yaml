@@ -1,0 +1,32 @@
+services:
+  - type: web
+    name: calibration-capacity-system
+    env: node
+    region: oregon
+    plan: free
+    buildCommand: npm install && pip install -r requirements.txt
+    startCommand: node server-simple-deploy.js
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 10000
+      - key: EMAIL_ENABLED
+        value: "true"
+      - key: EMAIL_HOST
+        value: "smtp.gmail.com"
+      - key: EMAIL_PORT
+        value: "587"
+      - key: EMAIL_SECURE
+        value: "false"
+      - key: EMAIL_USER
+        value: "sushantds2003@gmail.com"
+      - key: EMAIL_PASSWORD
+        value: "cebuquciloqihhdo"
+      - key: EMAIL_FROM
+        value: "sushantds2003@gmail.com"
+      - key: EMAIL_TO
+        value: "01fe23bcs086@kletech.ac.in"
+      - key: RESEND_API_KEY
+        value: "your_resend_api_key_here"
