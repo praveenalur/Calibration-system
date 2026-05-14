@@ -1,338 +1,221 @@
-// Global State
-let chartInstances = {};
-
-document.addEventListener('DOMContentLoaded', () => {
-    initTabs();
-    fetchAllocations();
-    fetchPlanVsActual();
-    fetchForecasts();
-    fetchAlerts();
-
-    // Event Listeners for Forms
-    document.getElementById('allocation-form').addEventListener('submit', handleAllocationSubmit);
-    document.getElementById('log-production-form').addEventListener('submit', handleLogProductionSubmit);
-    document.getElementById('variance-form').addEventListener('submit', handleVarianceSubmit);
-});
-
-// --- Tab Navigation ---
-function initTabs() {
-    const navItems = document.querySelectorAll('.nav-menu .nav-item[data-tab]');
-    navItems.forEach(item => {
-        item.addEventListener('click', () => {
-            // Remove active class from all nav items and tabs
-            document.querySelectorAll('.nav-item').forEach(nav => nav.classList.remove('active'));
-            document.querySelectorAll('.tab-pane').forEach(tab => tab.classList.remove('active'));
-
-            // Add active class to clicked item and corresponding tab
-            item.classList.add('active');
-            const tabId = item.getAttribute('data-tab');
-            document.getElementById(tabId).classList.add('active');
-
-            // Refresh charts if needed when tab is visible
-            if(chartInstances['planActualChart']) chartInstances['planActualChart'].update();
-            if(chartInstances['forecastChart']) chartInstances['forecastChart'].update();
-        });
-    });
-}
-
-// --- Modals ---
-function openModal(id, data = null) {
-    document.getElementById(id).style.display = 'flex';
+// Tab Switching Logic
+function switchTab(tabName) {
+    document.querySelectorAll('.tab-content').forEach(tab => tab.classList.remove('active'));
+    document.querySelectorAll('.nav-tabs li').forEach(li => li.classList.remove('active'));
     
-    // Pre-fill data if Variance modal
-    if (id === 'variance-modal' && data) {
-        document.getElementById('var-gauge-id').value = data.gauge_id;
-        document.getElementById('var-log-id').value = data.log_id;
-        document.getElementById('variance-gauge-lbl').textContent = `(${data.gauge_id})`;
-    }
+    document.getElementById(`${tabName}-tab`).classList.add('active');
+    event.currentTarget.classList.add('active');
+
+    if (tabName === 'efficiency') loadEfficiencyData();
 }
 
-function closeModal(id) {
-    document.getElementById(id).style.display = 'none';
-    const form = document.querySelector(`#${id} form`);
-    if(form) form.reset();
-}
-
-// --- Fetch Data & Render ---
-
-async function fetchAllocations() {
-    try {
-        const res = await fetch('/api/pipelines');
-        const { data } = await res.json();
-        
-        // For MVP, just fetching gauges directly if we need all allocations. 
-        // Let's assume we have a gauge route that gives allocations, or we mock it for demo if the route is /api/gauges/:id/allocations.
-        // Actually, let's just fetch all gauges and then mock the view or use the actual endpoints.
-        const gRes = await fetch('/api/gauges');
-        const gauges = (await gRes.json()).data;
-        
-        const tbody = document.getElementById('allocation-table-body');
-        tbody.innerHTML = '';
-        
-        // Render gauges (mocking allocation for now if not populated)
-        gauges.slice(0, 10).forEach(g => {
-            const riskClass = g.capacity_percentage > 90 ? 'text-red' : 'text-green';
-            const tr = document.createElement('tr');
-            tr.innerHTML = `
-                <td><strong>${g.gauge_id}</strong></td>
-                <td>Alpha Line (Pipeline 1)</td>
-                <td>100%</td>
-                <td>${g.created_at.split('T')[0]}</td>
-                <td><span class="badge badge-low">Active</span></td>
-                <td class="${riskClass}">${g.capacity_percentage ? g.capacity_percentage.toFixed(1) : 0}% Utilized</td>
-            `;
-            tbody.appendChild(tr);
-        });
-    } catch (e) {
-        console.error("Error fetching allocations", e);
-    }
-}
-
-async function fetchPlanVsActual() {
-    try {
-        const res = await fetch('/api/analytics/plan-vs-actual');
-        const { data } = await res.json();
-        
-        if (data && data.length > 0) {
-            renderPlanActualChart(data.reverse());
-        }
-
-        // Fetch logs for the table
-        // We will fetch one gauge's logs for the demo table
-        const gRes = await fetch('/api/gauges');
-        const gauges = (await gRes.json()).data;
-        if(gauges.length > 0) {
-            const logRes = await fetch(`/api/gauges/${gauges[0].gauge_id}/monthly-log`);
-            const logs = (await logRes.json()).data || [];
-            
-            const tbody = document.getElementById('plan-actual-table-body');
-            tbody.innerHTML = '';
-            
-            logs.forEach(log => {
-                const variance = log.actual_production - log.production_plan;
-                const varClass = variance < 0 ? 'text-red' : 'text-green';
-                const tr = document.createElement('tr');
-                tr.innerHTML = `
-                    <td><strong>${log.gauge_id}</strong></td>
-                    <td>${log.year_month}</td>
-                    <td>${log.production_plan}</td>
-                    <td>${log.actual_production}</td>
-                    <td class="${varClass}"><strong>${variance}</strong></td>
-                    <td>
-                        <button class="btn btn-small btn-secondary" onclick='openModal("variance-modal", ${JSON.stringify(log)})'>
-                            Why? ↗
-                        </button>
-                    </td>
-                `;
-                tbody.appendChild(tr);
-            });
-        }
-    } catch (e) {
-        console.error("Error fetching plan vs actual", e);
-    }
-}
-
-function renderPlanActualChart(data) {
-    const ctx = document.getElementById('planActualChart').getContext('2d');
+// Chart.js Initialization
+let efficiencyChart;
+function initChart(data) {
+    const ctx = document.getElementById('efficiencyChart').getContext('2d');
+    if (efficiencyChart) efficiencyChart.destroy();
     
-    if (chartInstances['planActualChart']) {
-        chartInstances['planActualChart'].destroy();
-    }
-
-    const labels = data.map(d => d.year_month);
-    const planData = data.map(d => d.total_plan);
-    const actualData = data.map(d => d.total_actual);
-
-    chartInstances['planActualChart'] = new Chart(ctx, {
+    efficiencyChart = new Chart(ctx, {
         type: 'bar',
         data: {
-            labels: labels,
+            labels: data.map(d => d.gauge_id),
             datasets: [
-                {
-                    label: 'Production Plan',
-                    data: planData,
-                    backgroundColor: 'rgba(148, 163, 184, 0.5)',
-                    borderRadius: 4
-                },
-                {
-                    label: 'Actual Production',
-                    data: actualData,
-                    backgroundColor: 'rgba(59, 130, 246, 0.8)',
-                    borderRadius: 4
-                }
+                { label: 'Planned', data: data.map(d => d.production_plan), backgroundColor: '#64748b' },
+                { label: 'Actual', data: data.map(d => d.actual_production), backgroundColor: '#38bdf8' }
             ]
         },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: {
-                legend: { labels: { color: '#f8fafc' } }
-            },
-            scales: {
-                y: { grid: { color: 'rgba(255,255,255,0.1)' }, ticks: { color: '#94a3b8' } },
-                x: { grid: { display: false }, ticks: { color: '#94a3b8' } }
-            }
-        }
+        options: { responsive: true, plugins: { legend: { labels: { color: '#f8fafc' } } } }
     });
 }
 
-async function fetchForecasts() {
-    try {
-        const res = await fetch('/api/forecasts/risk-summary');
-        const { data } = await res.json();
-        
-        const riskList = document.getElementById('risk-list');
-        const tbody = document.getElementById('forecast-table-body');
-        
-        riskList.innerHTML = '';
-        tbody.innerHTML = '';
-
-        if (data && data.length > 0) {
-            data.forEach(f => {
-                // Risk List Item
-                const li = document.createElement('li');
-                li.innerHTML = `<strong>${f.gauge_id}</strong>: Expiry predicted on ${f.predicted_expiry_date} (Confidence: ${(f.confidence_score*100).toFixed(0)}%)`;
-                riskList.appendChild(li);
-
-                // Table Row
-                const tr = document.createElement('tr');
-                tr.innerHTML = `
-                    <td><strong>${f.gauge_id}</strong></td>
-                    <td class="text-red">${f.predicted_expiry_date}</td>
-                    <td>${(f.predicted_utilisation_pct || 0).toFixed(1)}%</td>
-                    <td>${(f.confidence_score*100).toFixed(0)}%</td>
-                    <td><span class="badge badge-low">${f.model_version}</span></td>
-                `;
-                tbody.appendChild(tr);
-            });
-        } else {
-            riskList.innerHTML = '<li>No high collision risks detected at this time.</li>';
-        }
-        
-        // Mock a line chart for forecast timeline
-        renderForecastChart();
-    } catch (e) {
-        console.error("Error fetching forecasts", e);
-    }
+// "Why?" Button - Opening the Modal
+let activeLogId = null;
+function openVarianceModal(gaugeId, logId, variance) {
+    activeLogId = logId;
+    document.getElementById('variance-info').innerText = `Analyzing ${variance} unit gap for ${gaugeId}`;
+    document.getElementById('variance-modal').style.display = 'flex';
 }
 
-function renderForecastChart() {
-    const ctx = document.getElementById('forecastChart').getContext('2d');
-    if (chartInstances['forecastChart']) chartInstances['forecastChart'].destroy();
-
-    chartInstances['forecastChart'] = new Chart(ctx, {
-        type: 'line',
-        data: {
-            labels: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul (Predicted)', 'Aug (Predicted)'],
-            datasets: [{
-                label: 'Gauge Life Consumed (%)',
-                data: [10, 25, 40, 55, 75, 90, 105, 120],
-                borderColor: '#ef4444',
-                backgroundColor: 'rgba(239, 68, 68, 0.1)',
-                fill: true,
-                tension: 0.4
-            }]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: {
-                legend: { labels: { color: '#f8fafc' } }
-            },
-            scales: {
-                y: { grid: { color: 'rgba(255,255,255,0.1)' }, ticks: { color: '#94a3b8' }, max: 150 },
-                x: { grid: { display: false }, ticks: { color: '#94a3b8' } }
-            }
-        }
-    });
-}
-
-async function fetchAlerts() {
-    try {
-        const res = await fetch('/api/alerts');
-        const { data } = await res.json();
-        const feed = document.getElementById('alert-feed');
-        feed.innerHTML = '';
-
-        if(data && data.length > 0) {
-            data.forEach(alert => {
-                const badgeClass = alert.severity === 'high' ? 'badge-high' : (alert.severity === 'medium' ? 'badge-medium' : 'badge-low');
-                const li = document.createElement('li');
-                li.innerHTML = `
-                    <div>
-                        <strong>${alert.gauge_id}</strong>
-                        <p class="text-secondary" style="font-size: 0.85rem; margin-top: 4px;">${alert.message}</p>
-                    </div>
-                    <div>
-                        <span class="badge ${badgeClass}">${alert.type.replace('_', ' ')}</span>
-                    </div>
-                `;
-                feed.appendChild(li);
-            });
-        }
-    } catch (e) {
-        console.error("Error fetching alerts", e);
-    }
-}
-
-// --- Form Handlers ---
-
-async function handleAllocationSubmit(e) {
-    e.preventDefault();
-    const id = document.getElementById('alloc-gauge-id').value;
-    const body = {
-        pipeline_id: document.getElementById('alloc-pipeline-id').value,
-        allocation_pct: document.getElementById('alloc-pct').value,
-        effective_from: document.getElementById('alloc-date').value
-    };
+async function saveVariance() {
+    const reason = document.getElementById('reason-code').value;
+    const notes = document.getElementById('variance-notes').value;
     
-    await fetch(`/api/gauges/${id}/allocations`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body)
-    });
-    
-    closeModal('allocation-modal');
-    fetchAllocations();
-}
-
-async function handleLogProductionSubmit(e) {
-    e.preventDefault();
-    const id = document.getElementById('log-gauge-id').value;
-    const body = {
-        pipeline_id: document.getElementById('log-pipeline-id').value,
-        year_month: document.getElementById('log-month').value,
-        production_plan: document.getElementById('log-plan').value,
-        actual_production: document.getElementById('log-actual').value
-    };
-    
-    await fetch(`/api/gauges/${id}/monthly-log`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body)
-    });
-    
-    closeModal('log-production-modal');
-    fetchPlanVsActual();
-    // Re-fetch forecasts after a brief delay to allow ML script to run
-    setTimeout(fetchForecasts, 3000); 
-}
-
-async function handleVarianceSubmit(e) {
-    e.preventDefault();
-    const gaugeId = document.getElementById('var-gauge-id').value;
-    const logId = document.getElementById('var-log-id').value;
-    const body = {
-        variance_reason: document.getElementById('var-reason-code').value + " - " + document.getElementById('var-comments').value,
-        resolution_status: 'Investigating'
-    };
-    
-    await fetch(`/api/gauges/${gaugeId}/monthly-log/${logId}/variance`, {
+    await fetch(`/api/gauges/any/monthly-log/${activeLogId}/variance`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body)
+        body: JSON.stringify({ variance_reason: `${reason}: ${notes}`, resolution_status: 'logged' })
     });
     
-    closeModal('variance-modal');
-    fetchPlanVsActual();
+    document.getElementById('variance-modal').style.display = 'none';
+    loadEfficiencyData(); // Refresh table
 }
+
+// ─── UPLOAD / IMPORT FUNCTIONS ────────────────────────────────────────────────
+// Ported from: backup/app.js (setupFileUpload, handleFileSelect, uploadFile)
+
+function openUploadModal() {
+    document.getElementById('uploadModal').style.display = 'flex';
+    setupFileUpload();
+}
+
+function closeUploadModal() {
+    document.getElementById('uploadModal').style.display = 'none';
+    document.getElementById('fileInput').value = '';
+    document.getElementById('uploadOptions').style.display = 'none';
+    document.getElementById('importResults').style.display = 'none';
+    const selFile = document.getElementById('selectedFileName');
+    if (selFile) selFile.style.display = 'none';
+}
+
+let fileUploadInitialized = false;
+function setupFileUpload() {
+    if (fileUploadInitialized) return;
+    fileUploadInitialized = true;
+
+    const fileUpload = document.getElementById('fileUpload');
+    const fileInput = document.getElementById('fileInput');
+
+    fileUpload.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        fileUpload.classList.add('dragover');
+    });
+
+    fileUpload.addEventListener('dragleave', () => {
+        fileUpload.classList.remove('dragover');
+    });
+
+    fileUpload.addEventListener('drop', (e) => {
+        e.preventDefault();
+        fileUpload.classList.remove('dragover');
+        if (e.dataTransfer.files.length > 0) {
+            fileInput.files = e.dataTransfer.files;
+            handleFileSelect();
+        }
+    });
+
+    fileUpload.addEventListener('click', (e) => {
+        if (e.target.tagName !== 'BUTTON') fileInput.click();
+    });
+
+    fileInput.addEventListener('change', handleFileSelect);
+}
+
+function handleFileSelect() {
+    const fileInput = document.getElementById('fileInput');
+    const uploadOptions = document.getElementById('uploadOptions');
+    const selectedFileName = document.getElementById('selectedFileName');
+
+    if (fileInput.files.length > 0) {
+        const file = fileInput.files[0];
+        const sizeMB = (file.size / (1024 * 1024)).toFixed(2);
+        selectedFileName.innerHTML = `📄 <strong>${file.name}</strong> (${sizeMB} MB)`;
+        selectedFileName.style.display = 'flex';
+        uploadOptions.style.display = 'block';
+        document.getElementById('importResults').style.display = 'none';
+    }
+}
+
+async function uploadFile() {
+    const fileInput = document.getElementById('fileInput');
+    const replaceExisting = document.getElementById('replaceExisting').checked;
+    const skipDuplicates = document.getElementById('skipDuplicates').checked;
+
+    if (!fileInput.files.length) {
+        showNotification('Please select a file first', 'error');
+        return;
+    }
+
+    const formData = new FormData();
+    formData.append('file', fileInput.files[0]);
+    formData.append('replace_existing', replaceExisting);
+    formData.append('skip_duplicates', skipDuplicates);
+    formData.append('imported_by', 'Web Interface');
+
+    showNotification('Importing data...', 'info');
+
+    try {
+        const response = await fetch('/api/upload/import', {
+            method: 'POST',
+            body: formData
+        });
+
+        const result = await response.json();
+        const resultsDiv = document.getElementById('importResults');
+
+        if (result.success) {
+            const d = result.data;
+            resultsDiv.className = 'success';
+            resultsDiv.innerHTML = `
+                <strong>✅ Import Complete</strong>
+                <div class="import-stat"><span>Total Rows</span><span>${d.total_rows}</span></div>
+                <div class="import-stat"><span>Inserted</span><span style="color:#4CAF50">${d.inserted}</span></div>
+                <div class="import-stat"><span>Updated</span><span style="color:#FF9800">${d.updated}</span></div>
+                <div class="import-stat"><span>Skipped</span><span>${d.skipped}</span></div>
+                <div class="import-stat"><span>Alerts Generated</span><span style="color:#f44336">${d.alerts_generated}</span></div>
+                ${d.errors.length > 0 ? `<details style="margin-top:0.5rem"><summary style="cursor:pointer;opacity:0.7">${d.errors.length} error(s)</summary><ul style="margin-top:0.5rem;padding-left:1.2rem;font-size:0.8rem;opacity:0.7">${d.errors.map(e => `<li>${e}</li>`).join('')}</ul></details>` : ''}
+            `;
+            resultsDiv.style.display = 'block';
+            showNotification(`Import: ${d.inserted} inserted, ${d.updated} updated`, 'success');
+        } else {
+            resultsDiv.className = 'error';
+            resultsDiv.innerHTML = `<strong>❌ Import Failed</strong><p>${result.error}</p>`;
+            resultsDiv.style.display = 'block';
+            showNotification(`Import failed: ${result.error}`, 'error');
+        }
+    } catch (error) {
+        console.error('Upload error:', error);
+        showNotification('Upload failed: ' + error.message, 'error');
+    }
+}
+
+async function downloadExcel() {
+    try {
+        showNotification('Generating Excel file...', 'info');
+        const response = await fetch('/api/export/excel');
+        if (response.ok) {
+            const blob = await response.blob();
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `gauge-profiles-${new Date().toISOString().split('T')[0]}.xlsx`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            window.URL.revokeObjectURL(url);
+            showNotification('Excel file downloaded', 'success');
+        } else {
+            showNotification('Failed to generate Excel file', 'error');
+        }
+    } catch (error) {
+        console.error('Export error:', error);
+        showNotification('Export failed', 'error');
+    }
+}
+
+// ─── NOTIFICATION SYSTEM ──────────────────────────────────────────────────────
+// Ported from: backup/app.js (showNotification)
+function showNotification(message, type = 'info') {
+    const notification = document.createElement('div');
+    notification.className = `toast-notification ${type}`;
+    notification.textContent = message;
+    document.body.appendChild(notification);
+
+    requestAnimationFrame(() => {
+        notification.classList.add('show');
+    });
+
+    setTimeout(() => {
+        notification.classList.remove('show');
+        setTimeout(() => {
+            if (notification.parentNode) document.body.removeChild(notification);
+        }, 350);
+    }, 4000);
+}
+
+// ─── MODAL CLOSE ON BACKDROP CLICK ────────────────────────────────────────────
+window.addEventListener('click', (event) => {
+    if (event.target.id === 'uploadModal') closeUploadModal();
+    if (event.target.id === 'variance-modal') {
+        document.getElementById('variance-modal').style.display = 'none';
+    }
+});
